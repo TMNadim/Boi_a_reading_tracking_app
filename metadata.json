@@ -1,0 +1,6 @@
+{
+  "name": "Boi",
+  "description": "Personal reading tracker with real-time timer, ambient soundscapes, quotes and vocabulary notebook, reading goals, streaks, readathons, and shareable analytics.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
