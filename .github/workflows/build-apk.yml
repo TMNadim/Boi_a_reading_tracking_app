@@ -40,6 +40,9 @@ jobs:
       - name: Sync Android project
         run: npx cap sync android
 
+      - name: Configure Android permissions, notch insets & Boi logo
+        run: node scripts/configure-android.mjs
+
       - name: Grant Gradle execute permission
         run: chmod +x android/gradlew
 

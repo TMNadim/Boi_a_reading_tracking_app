@@ -3,6 +3,12 @@ import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { Camera, ImageUp, RefreshCw, X } from 'lucide-react';
 import { isValidIsbn, normalizeIsbn } from '../utils/isbnLookup';
+import { Capacitor } from '@capacitor/core';
+import {
+  ensureNativeCameraPermission,
+  ensureNativePhotoPermission,
+  pickNativeBarcodeImageDataUrl,
+} from '../utils/nativePermissions';
 
 interface IsbnScannerModalProps {
   isOpen: boolean;
@@ -38,6 +44,7 @@ export function IsbnScannerModal({
   const [statusHint, setStatusHint] = useState('Align the book barcode inside the frame.');
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceIndex, setSelectedDeviceIndex] = useState(0);
+  const [retryTick, setRetryTick] = useState(0);
   const [isDecodingPhoto, setIsDecodingPhoto] = useState(false);
 
   const stopScanner = () => {
@@ -68,12 +75,23 @@ export function IsbnScannerModal({
     const startCamera = async () => {
       setCameraState('starting');
       setErrorMessage('');
-      setStatusHint('Requesting camera access...');
+      setStatusHint('Requesting camera permission...');
+
+      // On native Android/iOS, request OS runtime camera permission first
+      const nativePerm = await ensureNativeCameraPermission();
+      if (cancelled) return;
+      if (nativePerm === 'denied') {
+        setCameraState('error');
+        setErrorMessage(
+          'Camera permission was denied. Tap Retry Permission, enable Camera in device settings, or scan from a photo below.'
+        );
+        return;
+      }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraState('error');
         setErrorMessage(
-          'Live camera scanning is unavailable in this browser. Upload a photo of the barcode below instead.'
+          'Live camera scanning is unavailable here. Upload or capture a barcode photo below instead.'
         );
         return;
       }
@@ -120,7 +138,7 @@ export function IsbnScannerModal({
         const msg = (err as Error)?.name;
         if (msg === 'NotAllowedError' || msg === 'PermissionDeniedError') {
           setErrorMessage(
-            'Camera permission was denied. Allow camera access or upload a photo of the barcode below.'
+            'Camera permission was denied. Allow camera access or scan from a barcode photo below.'
           );
         } else {
           setErrorMessage(
@@ -136,20 +154,14 @@ export function IsbnScannerModal({
       cancelled = true;
       stopScanner();
     };
-  }, [isOpen, selectedDeviceIndex, onDetected]);
+  }, [isOpen, selectedDeviceIndex, retryTick, onDetected]);
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-
+  const decodeBarcodeFromImageSrc = async (imageSrc: string) => {
     setIsDecodingPhoto(true);
     setErrorMessage('');
-    const objectUrl = URL.createObjectURL(file);
-
     try {
       const reader = createIsbnReader();
-      const result = await reader.decodeFromImageUrl(objectUrl);
+      const result = await reader.decodeFromImageUrl(imageSrc);
       const clean = normalizeIsbn(result.getText());
       if (isValidIsbn(clean)) {
         stopScanner();
@@ -164,8 +176,40 @@ export function IsbnScannerModal({
         'Could not read a clear ISBN barcode from that image. Try a sharper, well-lit photo.'
       );
     } finally {
-      URL.revokeObjectURL(objectUrl);
       setIsDecodingPhoto(false);
+    }
+  };
+
+  const handleOpenPhotoPicker = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const dataUrl = await pickNativeBarcodeImageDataUrl();
+        if (dataUrl) {
+          await decodeBarcodeFromImageSrc(dataUrl);
+        }
+        return;
+      } catch (err) {
+        const message = (err as Error)?.message?.toLowerCase() ?? '';
+        if (message.includes('cancel')) {
+          return;
+        }
+        // Fallback to standard file picker if native plugin throws
+      }
+    }
+    await ensureNativePhotoPermission();
+    fileInputRef.current?.click();
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      await decodeBarcodeFromImageSrc(objectUrl);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
     }
   };
 
@@ -237,6 +281,14 @@ export function IsbnScannerModal({
                 <p className="mt-2.5 text-xs leading-relaxed text-slate-300">
                   {errorMessage}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setRetryTick((t) => t + 1)}
+                  className="mt-3.5 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[#1D63ED] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1550C8]"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Retry Camera</span>
+                </button>
               </div>
             )}
           </div>
@@ -269,7 +321,7 @@ export function IsbnScannerModal({
             <button
               type="button"
               disabled={isDecodingPhoto}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => void handleOpenPhotoPicker()}
               className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[#D5DBE5] bg-white px-4 py-2 text-xs font-semibold text-[#121826] transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-[#0B1120] dark:text-slate-100 dark:hover:bg-slate-800"
             >
               <ImageUp className="h-4 w-4" aria-hidden="true" />

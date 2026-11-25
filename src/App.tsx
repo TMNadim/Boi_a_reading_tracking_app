@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import {
   BarChart3,
   BookMarked,
@@ -23,12 +25,15 @@ import type {
 } from './types/bookly';
 import { createSeedState, loadBooklyState, saveBooklyState } from './data/seedData';
 import { ambientAudio } from './utils/ambientAudio';
+import { resolveBackButtonAction } from './utils/backNavigation';
+import { syncNativeStatusBar } from './utils/nativePermissions';
 import {
   calculateDailyProgress,
   calculateStreak,
   formatTimerClock,
   getDateKey,
 } from './utils/readingStats';
+import { BoiLogo } from './components/BoiLogo';
 import { LibraryView } from './components/LibraryView';
 import { TimerView } from './components/TimerView';
 import { QuotesNotebookView } from './components/QuotesNotebookView';
@@ -81,17 +86,45 @@ export default function App() {
   // Modals & notifications
   const [isBookFormOpen, setIsBookFormOpen] = useState(false);
   const [openScannerOnMount, setOpenScannerOnMount] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scannerCloseSignal, setScannerCloseSignal] = useState(0);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [detailBookId, setDetailBookId] = useState<string | null>(null);
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
   const [sessionToast, setSessionToast] = useState<string | null>(null);
+
+  const lastBackPressRef = useRef<number>(0);
+  const navStateRef = useRef({
+    activeTab,
+    isScannerOpen,
+    isBookFormOpen,
+    hasDetailBook: false,
+    isFinishModalOpen,
+  });
+
+  useEffect(() => {
+    navStateRef.current = {
+      activeTab,
+      isScannerOpen,
+      isBookFormOpen,
+      hasDetailBook: Boolean(detailBookId),
+      isFinishModalOpen,
+    };
+  }, [activeTab, isScannerOpen, isBookFormOpen, detailBookId, isFinishModalOpen]);
+
+  const showToast = useCallback((msg: string) => {
+    setSessionToast(msg);
+    window.setTimeout(() => {
+      setSessionToast((curr) => (curr === msg ? null : curr));
+    }, 4500);
+  }, []);
 
   // Persist state to localStorage
   useEffect(() => {
     saveBooklyState(state);
   }, [state]);
 
-  // Sync dark mode class on <html>
+  // Sync dark mode class on <html> and native Android/iOS status bar
   useEffect(() => {
     const root = document.documentElement;
     if (state.theme === 'dark') {
@@ -99,7 +132,65 @@ export default function App() {
     } else {
       root.classList.remove('dark');
     }
+    void syncNativeStatusBar(state.theme);
   }, [state.theme]);
+
+  // Handle Android hardware / gesture Back button cleanly
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let cancelled = false;
+    let removeListener: (() => Promise<void>) | null = null;
+
+    void CapApp.addListener('backButton', () => {
+      const nowMs = Date.now();
+      const action = resolveBackButtonAction({
+        ...navStateRef.current,
+        lastExitPressMs: lastBackPressRef.current,
+        nowMs,
+      });
+
+      switch (action.type) {
+        case 'close-scanner':
+          setScannerCloseSignal((n) => n + 1);
+          break;
+        case 'close-finish-modal':
+          setIsFinishModalOpen(false);
+          break;
+        case 'close-book-form':
+          setIsBookFormOpen(false);
+          setOpenScannerOnMount(false);
+          setEditingBook(null);
+          break;
+        case 'close-detail-modal':
+          setDetailBookId(null);
+          break;
+        case 'go-library':
+          setActiveTab('library');
+          break;
+        case 'prompt-exit':
+          lastBackPressRef.current = action.nextExitPressMs;
+          showToast('Press back again to exit Boi');
+          break;
+        case 'exit-app':
+          void CapApp.exitApp();
+          break;
+      }
+    }).then((handle) => {
+      if (cancelled) {
+        void handle.remove();
+      } else {
+        removeListener = () => handle.remove();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (removeListener) {
+        void removeListener();
+      }
+    };
+  }, [showToast]);
 
   // Live stopwatch interval
   useEffect(() => {
@@ -136,12 +227,6 @@ export default function App() {
     [state.books, detailBookId]
   );
 
-  const showToast = (msg: string) => {
-    setSessionToast(msg);
-    window.setTimeout(() => {
-      setSessionToast((curr) => (curr === msg ? null : curr));
-    }, 4500);
-  };
 
   const handleSelectSound = (sound: AmbientSoundId | null) => {
     setActiveSound(sound);
@@ -371,9 +456,10 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveTab('library')}
-            className="font-editorial text-2xl font-bold tracking-tight text-[#121826] dark:text-white"
+            className="flex items-center gap-2.5 font-editorial text-2xl font-bold tracking-tight text-[#121826] dark:text-white"
           >
-            Boi
+            <BoiLogo className="h-8 w-8 shrink-0" />
+            <span>Boi</span>
           </button>
           <button
             type="button"
@@ -449,54 +535,62 @@ export default function App() {
       </aside>
 
       {/* Main Content Shell */}
-      <div className="flex min-h-screen flex-col pb-20 lg:pb-0 lg:pl-64">
-        {/* Compact Single-Row Top Header (52px mobile, 64px desktop) */}
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-[#E4E7EC] bg-white/90 px-4 backdrop-blur-md sm:px-8 lg:h-16 dark:border-slate-800 dark:bg-[#101827]/90">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="font-editorial text-xl font-bold tracking-tight text-[#121826] lg:hidden dark:text-white">
-              Boi
-            </span>
-            <h1 className="hidden truncate text-xl font-semibold text-[#121826] lg:block dark:text-slate-100">
-              {PAGE_TITLES[activeTab]}
-            </h1>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2.5">
-            {(isTimerRunning || elapsedSeconds > 0) && activeTab !== 'timer' && (
+      <div className="flex min-h-screen flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pl-64">
+        {/* Compact Single-Row Top Header with safe-area notch clearance */}
+        <header className="sticky top-0 z-20 border-b border-[#E4E7EC] bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur-md dark:border-slate-800 dark:bg-[#101827]/95">
+          <div className="flex h-14 items-center justify-between gap-4 px-4 sm:px-8 lg:h-16">
+            <div className="flex min-w-0 items-center gap-2.5">
               <button
                 type="button"
-                onClick={() => setActiveTab('timer')}
-                className="inline-flex min-h-[38px] items-center gap-2 whitespace-nowrap rounded-xl border border-[#1D63ED]/30 bg-[#EEF4FF] px-3 py-1.5 font-mono text-xs font-semibold tabular-nums text-[#1D63ED] dark:bg-[#1D63ED]/20 dark:text-[#60A5FA]"
+                onClick={() => setActiveTab('library')}
+                className="flex items-center gap-2 font-editorial text-xl font-bold tracking-tight text-[#121826] lg:hidden dark:text-white"
               >
-                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>{formatTimerClock(elapsedSeconds)}</span>
+                <BoiLogo className="h-7 w-7 shrink-0" />
+                <span>Boi</span>
               </button>
-            )}
+              <h1 className="hidden truncate text-xl font-semibold text-[#121826] lg:block dark:text-slate-100">
+                {PAGE_TITLES[activeTab]}
+              </h1>
+            </div>
 
-            <button
-              type="button"
-              onClick={toggleTheme}
-              aria-label={`Switch to ${state.theme === 'dark' ? 'light' : 'dark'} theme`}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-[#5A6577] hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800"
-            >
-              {state.theme === 'dark' ? (
-                <Sun className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <Moon className="h-4 w-4" aria-hidden="true" />
+            <div className="flex shrink-0 items-center gap-2.5">
+              {(isTimerRunning || elapsedSeconds > 0) && activeTab !== 'timer' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('timer')}
+                  className="inline-flex min-h-[38px] items-center gap-2 whitespace-nowrap rounded-xl border border-[#1D63ED]/30 bg-[#EEF4FF] px-3 py-1.5 font-mono text-xs font-semibold tabular-nums text-[#1D63ED] dark:bg-[#1D63ED]/20 dark:text-[#60A5FA]"
+                >
+                  <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{formatTimerClock(elapsedSeconds)}</span>
+                </button>
               )}
-            </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setEditingBook(null);
-                setIsBookFormOpen(true);
-              }}
-              className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#1D63ED] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1550C8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D63ED]"
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              <span>Add Book</span>
-            </button>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label={`Switch to ${state.theme === 'dark' ? 'light' : 'dark'} theme`}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-[#5A6577] hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                {state.theme === 'dark' ? (
+                  <Sun className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Moon className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBook(null);
+                  setOpenScannerOnMount(false);
+                  setIsBookFormOpen(true);
+                }}
+                className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#1D63ED] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1550C8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D63ED]"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>Add Book</span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -612,31 +706,33 @@ export default function App() {
         </main>
       </div>
 
-      {/* Mobile Bottom Tab Bar (56px height; total fixed header+nav = 112px < 15% of 844px) */}
+      {/* Mobile Bottom Tab Bar with safe-area gesture bar clearance */}
       <nav
         aria-label="Mobile navigation"
-        className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-5 border-t border-[#E4E7EC] bg-white/95 backdrop-blur-md lg:hidden dark:border-slate-800 dark:bg-[#101827]/95"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E4E7EC] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden dark:border-slate-800 dark:bg-[#101827]/95"
       >
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const active = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveTab(item.id)}
-              aria-current={active ? 'page' : undefined}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
-                active
-                  ? 'text-[#1D63ED] dark:text-[#60A5FA]'
-                  : 'text-[#5A6577] dark:text-slate-400'
-              }`}
-            >
-              <Icon className="h-5 w-5" aria-hidden="true" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        <div className="grid h-14 grid-cols-5">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                aria-current={active ? 'page' : undefined}
+                className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                  active
+                    ? 'text-[#1D63ED] dark:text-[#60A5FA]'
+                    : 'text-[#5A6577] dark:text-slate-400'
+                }`}
+              >
+                <Icon className="h-5 w-5" aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </nav>
 
       {/* Modals */}
@@ -644,6 +740,8 @@ export default function App() {
         isOpen={isBookFormOpen}
         initialBook={editingBook}
         openScannerOnMount={openScannerOnMount}
+        scannerCloseSignal={scannerCloseSignal}
+        onScannerOpenChange={setIsScannerOpen}
         collections={state.collections}
         onClose={() => {
           setIsBookFormOpen(false);

@@ -10,6 +10,8 @@ interface BookFormModalProps {
   isOpen: boolean;
   initialBook?: Book | null;
   openScannerOnMount?: boolean;
+  scannerCloseSignal?: number;
+  onScannerOpenChange?: (open: boolean) => void;
   collections: Collection[];
   onClose: () => void;
   onSave: (bookData: Omit<Book, 'id' | 'addedAt'> & { id?: string }) => void;
@@ -26,6 +28,8 @@ export function BookFormModal({
   isOpen,
   initialBook,
   openScannerOnMount = false,
+  scannerCloseSignal = 0,
+  onScannerOpenChange,
   collections,
   onClose,
   onSave,
@@ -95,6 +99,16 @@ export function BookFormModal({
     setIsLookingUp(false);
     setIsScannerOpen(openScannerOnMount && !initialBook);
   }, [isOpen, initialBook, openScannerOnMount]);
+
+  useEffect(() => {
+    onScannerOpenChange?.(isScannerOpen);
+  }, [isScannerOpen, onScannerOpenChange]);
+
+  useEffect(() => {
+    if (scannerCloseSignal > 0) {
+      setIsScannerOpen(false);
+    }
+  }, [scannerCloseSignal]);
 
   const performIsbnLookup = useCallback(async (rawInput: string) => {
     const clean = normalizeIsbn(rawInput);
