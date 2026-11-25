@@ -57,7 +57,7 @@ export function BlooCompanion({
         </div>
         <div className="min-w-0">
           <p className="text-xs font-medium text-[#5A6577] dark:text-slate-400">
-            Bloo · Reading Companion
+            Boi · A Reading Companion
           </p>
           <h2 className="mt-0.5 text-base font-semibold text-[#121826] dark:text-slate-100">
             {headline}
