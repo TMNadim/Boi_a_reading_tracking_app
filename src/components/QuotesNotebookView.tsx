@@ -351,10 +351,12 @@ export function QuotesNotebookView({
       {filteredNotes.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[#D5DBE5] bg-white px-6 py-14 text-center dark:border-slate-800 dark:bg-[#131B2E]">
           <h3 className="font-editorial text-lg font-semibold text-[#121826] dark:text-slate-100">
-            No notebook entries found
+            {notes.length === 0 ? 'No quotes or notes yet' : 'No notebook entries found'}
           </h3>
           <p className="mx-auto mt-1.5 max-w-sm text-sm text-[#5A6577] dark:text-slate-400">
-            Capture memorable quotes, thoughts, and vocabulary words while reading or add one above.
+            {books.length === 0
+              ? 'Add a book to your library first, then save favorite quotes, thoughts, and vocabulary words as you read.'
+              : 'Capture memorable quotes, thoughts, and vocabulary words while reading or add one above.'}
           </p>
         </div>
       ) : (

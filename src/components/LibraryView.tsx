@@ -308,19 +308,33 @@ export function LibraryView({
       {filteredBooks.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[#D5DBE5] bg-white px-6 py-14 text-center dark:border-slate-800 dark:bg-[#131B2E]">
           <h3 className="font-editorial text-lg font-semibold text-[#121826] dark:text-slate-100">
-            No books match this view
+            {books.length === 0 ? 'Your library is empty' : 'No books match this view'}
           </h3>
           <p className="mx-auto mt-1.5 max-w-sm text-sm text-[#5A6577] dark:text-slate-400">
-            Clear your filter or add a new book to begin tracking pages, reading speed, and quotes.
+            {books.length === 0
+              ? 'Add your first book manually or scan an ISBN barcode to auto-fill the cover, title, and author.'
+              : 'Clear your filter or add a new book to begin tracking pages, reading speed, and quotes.'}
           </p>
-          <button
-            type="button"
-            onClick={onOpenAddBook}
-            className="mt-5 inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-[#1D63ED] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1550C8]"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            <span>Add Book</span>
-          </button>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={onOpenAddBook}
+              className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-[#1D63ED] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1550C8]"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              <span>{books.length === 0 ? 'Add First Book' : 'Add Book'}</span>
+            </button>
+            {books.length === 0 && (
+              <button
+                type="button"
+                onClick={onOpenScanIsbn}
+                className="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-[#D5DBE5] bg-white px-4 py-2.5 text-sm font-medium text-[#121826] hover:bg-slate-50 dark:border-slate-700 dark:bg-[#0B1120] dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                <ScanBarcode className="h-4 w-4 text-[#1D63ED] dark:text-[#60A5FA]" aria-hidden="true" />
+                <span>Scan ISBN</span>
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">

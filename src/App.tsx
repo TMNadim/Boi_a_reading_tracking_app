@@ -23,7 +23,7 @@ import type {
   ReadingSession,
   SessionMood,
 } from './types/bookly';
-import { createSeedState, loadBooklyState, saveBooklyState } from './data/seedData';
+import { createEmptyState, loadBooklyState, saveBooklyState } from './data/seedData';
 import { ambientAudio } from './utils/ambientAudio';
 import { resolveBackButtonAction } from './utils/backNavigation';
 import { syncNativeStatusBar } from './utils/nativePermissions';
@@ -700,7 +700,12 @@ export default function App() {
               state={state}
               onDeleteSession={handleDeleteSession}
               onImportState={(imported) => setState(imported)}
-              onResetDemoData={() => setState(createSeedState())}
+              onClearAllData={() => {
+                setState(createEmptyState());
+                setActiveBookId('');
+                setIsTimerRunning(false);
+                setElapsedSeconds(0);
+              }}
             />
           )}
         </main>

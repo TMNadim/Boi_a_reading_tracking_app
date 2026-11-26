@@ -12,8 +12,10 @@ import {
   estimateTimeToFinishMinutes,
   formatMinutesReadable,
   formatTimerClock,
+  getBlooMessage,
   getDailyActivitySeries,
 } from './readingStats';
+import { createEmptyState } from '../data/seedData';
 import type { Book, Readathon, ReadingSession } from '../types/bookly';
 
 const sampleBook: Book = {
@@ -185,4 +187,28 @@ test('computeAchievements unlocks expected milestones', () => {
   assert.equal(firstChapter?.unlocked, true);
   assert.equal(steadyPace?.unlocked, true);
   assert.equal(weekStreak?.unlocked, false);
+});
+
+test('createEmptyState starts completely clean with zero demo records', () => {
+  const empty = createEmptyState();
+  assert.equal(empty.books.length, 0);
+  assert.equal(empty.sessions.length, 0);
+  assert.equal(empty.notes.length, 0);
+  assert.equal(empty.collections.length, 0);
+  assert.equal(empty.readathons.length, 0);
+
+  const daily = calculateDailyProgress(empty.sessions, empty.goals, '2026-11-26');
+  assert.equal(daily.minutesToday, 0);
+  assert.equal(daily.percent, 0);
+  assert.equal(daily.goalMet, false);
+
+  const streak = calculateStreak(empty.sessions, '2026-11-26');
+  assert.equal(streak.currentStreak, 0);
+  assert.equal(streak.longestStreak, 0);
+
+  const achievements = computeAchievements(empty, '2026-11-26');
+  assert.equal(achievements.every((a) => !a.unlocked), true);
+
+  const companion = getBlooMessage(empty, '2026-11-26');
+  assert.match(companion.headline, /Pick your next book/i);
 });

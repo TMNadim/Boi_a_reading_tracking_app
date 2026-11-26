@@ -17,14 +17,14 @@ interface StatsViewProps {
   state: BooklyState;
   onDeleteSession: (sessionId: string) => void;
   onImportState: (nextState: BooklyState) => void;
-  onResetDemoData: () => void;
+  onClearAllData: () => void;
 }
 
 export function StatsView({
   state,
   onDeleteSession,
   onImportState,
-  onResetDemoData,
+  onClearAllData,
 }: StatsViewProps) {
   const [rangeDays, setRangeDays] = useState<7 | 30>(7);
   const [metric, setMetric] = useState<'minutes' | 'pages'>('minutes');
@@ -476,7 +476,7 @@ export function StatsView({
             Data Backup & Portability
           </h2>
           <p className="mt-0.5 text-xs text-[#5A6577] dark:text-slate-400">
-            Your library, sessions, and quotes are saved locally in this browser.
+            Your library, sessions, and quotes are saved locally on this device.
           </p>
         </div>
 
@@ -511,13 +511,13 @@ export function StatsView({
               <button
                 type="button"
                 onClick={() => {
-                  onResetDemoData();
+                  onClearAllData();
                   setConfirmReset(false);
-                  setStatusMessage('Demo library restored.');
+                  setStatusMessage('All local data cleared.');
                 }}
                 className="min-h-[38px] rounded-xl bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
               >
-                Confirm Reset
+                Confirm Clear
               </button>
               <button
                 type="button"
@@ -531,10 +531,10 @@ export function StatsView({
             <button
               type="button"
               onClick={() => setConfirmReset(true)}
-              className="inline-flex min-h-[38px] items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-medium text-[#5A6577] hover:bg-slate-100 hover:text-[#121826] dark:text-slate-400 dark:hover:bg-slate-800"
+              className="inline-flex min-h-[38px] items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-medium text-[#5A6577] hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-red-400"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Reset Demo Data</span>
+              <span>Clear All Data</span>
             </button>
           )}
         </div>
